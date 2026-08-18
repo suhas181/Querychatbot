@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+._*
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Node (not used by this project, but keeps stray installs out)
+node_modules/
+
+# Python / backend
+backend/venv/
+backend/.env
+__pycache__/
+*.py[cod]
+backend/chatbot/model/
+*.pkl
