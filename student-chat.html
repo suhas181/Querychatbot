@@ -67,6 +67,10 @@
         <textarea id="chatInput" rows="1"
                   placeholder="Ask a question about the college…"
                   autocomplete="off"></textarea>
+        <button class="mic-btn" type="button" id="micBtn"
+                title="Speak your question (Voice Input)" aria-label="Speak your question">
+          <span data-icon="mic"></span>
+        </button>
         <button class="send-btn" type="submit" id="sendBtn" disabled
                 aria-label="Send question">
           <span data-icon="send"></span>
@@ -74,8 +78,14 @@
       </form>
 
       <div class="composer-hint">
-        <span><kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</span>
-        <span class="hint-right" id="kbCount">—</span>
+        <div class="voice-status-hint" id="voiceStatusHint">
+          <span id="voiceStatusText"><kbd>Enter</kbd> to send · Click <kbd>🎤</kbd> to speak</span>
+        </div>
+        <button type="button" class="voice-mute-toggle active" id="voiceMuteToggle"
+                title="Click to toggle automatic voice readout">
+          <span class="voice-icon-wrap" id="voiceMuteIcon"></span>
+          <span id="voiceMuteLabel">Voice answers: ON</span>
+        </button>
       </div>
     </div>
   </main>

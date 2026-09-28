@@ -70,10 +70,25 @@
             ? '<span class="msg-source">' + UI.icon("tag", 12) +
               UI.escapeHtml(category) + "</span>"
             : "") +
+          '<button class="msg-speak-btn" type="button" title="Listen to this answer" aria-label="Listen to answer">' +
+            '<span class="btn-icon">' + UI.icon("volume", 12) + "</span>" +
+            '<span class="btn-text">Listen</span>' +
+          "</button>" +
         "</div>" +
       "</div>";
     thread.appendChild(row);
     scrollToEnd();
+
+    const speakBtn = row.querySelector(".msg-speak-btn");
+    if (speakBtn) {
+      speakBtn.addEventListener("click", function () {
+        speak(text, speakBtn);
+      });
+    }
+
+    if (voiceEnabled) {
+      speak(text, speakBtn);
+    }
   }
 
   function showTyping() {
@@ -96,6 +111,231 @@
     if (row) row.remove();
   }
 
+  /* ========================================================== voice assistant */
+
+  const micBtn = document.getElementById("micBtn");
+  const voiceMuteToggle = document.getElementById("voiceMuteToggle");
+  const voiceMuteIcon = document.getElementById("voiceMuteIcon");
+  const voiceMuteLabel = document.getElementById("voiceMuteLabel");
+  const voiceStatusHint = document.getElementById("voiceStatusHint");
+  const voiceStatusText = document.getElementById("voiceStatusText");
+
+  let voiceEnabled = localStorage.getItem("sea_chatbot_voice_enabled") !== "false";
+  let currentSpeakingBtn = null;
+
+  function updateVoiceToggleUI() {
+    if (!voiceMuteToggle) return;
+    if (voiceEnabled) {
+      voiceMuteToggle.classList.add("active");
+      voiceMuteToggle.classList.remove("muted");
+      if (voiceMuteIcon) voiceMuteIcon.innerHTML = UI.icon("volume", 13);
+      if (voiceMuteLabel) voiceMuteLabel.textContent = "Voice answers: ON";
+      voiceMuteToggle.title = "Click to mute automatic voice readout";
+    } else {
+      voiceMuteToggle.classList.remove("active");
+      voiceMuteToggle.classList.add("muted");
+      if (voiceMuteIcon) voiceMuteIcon.innerHTML = UI.icon("volumeX", 13);
+      if (voiceMuteLabel) voiceMuteLabel.textContent = "Voice answers: OFF";
+      voiceMuteToggle.title = "Click to enable automatic voice readout";
+    }
+  }
+
+  if (voiceMuteToggle) {
+    voiceMuteToggle.addEventListener("click", function () {
+      voiceEnabled = !voiceEnabled;
+      localStorage.setItem("sea_chatbot_voice_enabled", voiceEnabled ? "true" : "false");
+      updateVoiceToggleUI();
+      if (!voiceEnabled) {
+        stopSpeaking();
+      }
+    });
+  }
+
+  function stopSpeaking() {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    if (currentSpeakingBtn) {
+      currentSpeakingBtn.classList.remove("speaking");
+      const icon = currentSpeakingBtn.querySelector(".btn-icon");
+      const text = currentSpeakingBtn.querySelector(".btn-text");
+      if (icon) icon.innerHTML = UI.icon("volume", 12);
+      if (text) text.textContent = "Listen";
+      currentSpeakingBtn = null;
+    }
+  }
+
+  function cleanForSpeech(raw) {
+    return String(raw || "")
+      .replace(/<[^>]*>/g, "")
+      .replace(/[*_#`~[\]()]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function speak(text, btn) {
+    if (!("speechSynthesis" in window)) return;
+    const clean = cleanForSpeech(text);
+    if (!clean) return;
+
+    if (currentSpeakingBtn === btn && window.speechSynthesis.speaking) {
+      stopSpeaking();
+      return;
+    }
+
+    stopSpeaking();
+
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice =
+      voices.find(function (v) {
+        return (
+          v.lang.startsWith("en") &&
+          (v.name.includes("India") ||
+           v.name.includes("Natural") ||
+           v.name.includes("Google") ||
+           v.name.includes("Samantha"))
+        );
+      }) ||
+      voices.find(function (v) {
+        return v.lang.startsWith("en");
+      });
+
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+
+    if (btn) {
+      currentSpeakingBtn = btn;
+      btn.classList.add("speaking");
+      const icon = btn.querySelector(".btn-icon");
+      const label = btn.querySelector(".btn-text");
+      if (icon) icon.innerHTML = UI.icon("volumeX", 12);
+      if (label) label.textContent = "Stop";
+    }
+
+    utterance.onend = function () {
+      stopSpeaking();
+    };
+
+    utterance.onerror = function () {
+      stopSpeaking();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  if ("speechSynthesis" in window && window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = function () {
+      window.speechSynthesis.getVoices();
+    };
+  }
+
+  /* ---------------- Speech Recognition (Voice Input) ---------------- */
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition = null;
+  let isListening = false;
+
+  function setListeningState(listening, statusMsg) {
+    isListening = listening;
+    if (micBtn) {
+      if (listening) {
+        micBtn.classList.add("listening");
+        micBtn.title = "Listening... Click to stop";
+      } else {
+        micBtn.classList.remove("listening");
+        micBtn.title = "Speak your question (Voice Input)";
+      }
+    }
+    if (voiceStatusHint && voiceStatusText) {
+      if (listening) {
+        voiceStatusHint.classList.add("listening");
+        voiceStatusText.innerHTML =
+          UI.icon("mic", 14) + " " + (statusMsg || "Listening... Speak your question now");
+      } else {
+        voiceStatusHint.classList.remove("listening");
+        voiceStatusText.innerHTML =
+          "<kbd>Enter</kbd> to send · Click <kbd>🎤</kbd> to speak";
+      }
+    }
+  }
+
+  if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = "en-IN";
+
+    recognition.onstart = function () {
+      stopSpeaking();
+      setListeningState(true, "Listening... Speak your question");
+    };
+
+    recognition.onresult = function (event) {
+      let interim = "";
+      let final = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          final += event.results[i][0].transcript;
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      const text = final || interim;
+      if (text) {
+        input.value = text;
+        autoGrow();
+        updateSendState();
+      }
+    };
+
+    recognition.onerror = function (event) {
+      console.warn("[speech recognition]", event.error);
+      setListeningState(false);
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        UI.toast(
+          "Microphone access was denied. Please allow microphone permissions in your browser.",
+          "error"
+        );
+      } else if (event.error !== "no-speech") {
+        UI.toast("Voice input error: " + event.error, "error");
+      }
+    };
+
+    recognition.onend = function () {
+      setListeningState(false);
+      const query = input.value.trim();
+      if (query && !busy) {
+        ask(query);
+      }
+    };
+  }
+
+  if (micBtn) {
+    micBtn.addEventListener("click", function () {
+      if (!SpeechRecognition) {
+        UI.toast(
+          "Voice recognition is not supported in this browser. Please use Chrome, Edge, or Safari.",
+          "info"
+        );
+        return;
+      }
+      if (isListening) {
+        recognition.stop();
+      } else {
+        try {
+          recognition.start();
+        } catch (err) {
+          console.warn("[speech start]", err);
+        }
+      }
+    });
+  }
+
   /* ========================================================== asking */
 
   function ask(text) {
@@ -103,6 +343,7 @@
     if (!question || busy) return;
 
     busy = true;
+    stopSpeaking();
     if (welcome) welcome.classList.add("hidden");
     addUserMessage(question);
     input.value = "";
@@ -200,5 +441,6 @@
   }
 
   updateSendState();
+  updateVoiceToggleUI();
   input.focus();
 })();

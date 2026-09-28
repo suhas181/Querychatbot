@@ -961,6 +961,143 @@
   color: var(--ink-500);
 }
 
+/* Voice Assistant controls */
+.mic-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--r-md);
+  background: var(--slate-100);
+  color: var(--navy-800);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.mic-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mic-btn:hover {
+  background: var(--slate-200);
+  color: var(--navy-900);
+  border-color: var(--line-strong);
+}
+
+.mic-btn.listening {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #fca5a5;
+  animation: micPulse 1.2s infinite alternate ease-in-out;
+}
+
+@keyframes micPulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
+  }
+  100% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 8px rgba(220, 38, 38, 0.35);
+  }
+}
+
+.voice-status-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.voice-status-hint.listening {
+  color: #dc2626;
+  font-weight: 600;
+  animation: pulse 1.2s infinite;
+}
+
+.voice-mute-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-500);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.voice-mute-toggle svg {
+  width: 13px;
+  height: 13px;
+}
+
+.voice-mute-toggle:hover {
+  background: var(--white);
+  border-color: var(--line);
+  color: var(--navy-800);
+}
+
+.voice-mute-toggle.active {
+  color: var(--navy-700);
+  font-weight: 500;
+}
+
+.voice-mute-toggle.active .voice-icon-wrap {
+  color: var(--navy-600);
+}
+
+.voice-mute-toggle.muted {
+  color: var(--ink-400);
+}
+
+/* Speak answer button in message bubble */
+.msg-speak-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  background: var(--slate-100);
+  color: var(--ink-600);
+  border: none;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--t-fast);
+  margin-left: auto;
+}
+
+.msg-speak-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.msg-speak-btn:hover {
+  background: var(--slate-200);
+  color: var(--navy-800);
+}
+
+.msg-speak-btn.speaking {
+  background: var(--navy-50);
+  color: var(--navy-700);
+  font-weight: 600;
+  animation: speakGlow 1.5s infinite alternate;
+}
+
+@keyframes speakGlow {
+  0% {
+    box-shadow: 0 0 0 1px rgba(30, 69, 115, 0.2);
+  }
+  100% {
+    box-shadow: 0 0 0 4px rgba(30, 69, 115, 0.35);
+  }
+}
+
 @media (max-width: 620px) {
   .msg-body {
     max-width: 86%;
