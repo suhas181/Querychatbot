@@ -299,8 +299,7 @@
           UI.icon("mic", 14) + " " + (statusMsg || "Listening... Speak your question now");
       } else {
         voiceStatusHint.classList.remove("listening");
-        voiceStatusText.innerHTML =
-          "<kbd>Enter</kbd> to send · Click <kbd>🎤</kbd> to speak";
+        voiceStatusText.innerHTML = "";
       }
     }
   }
@@ -574,25 +573,50 @@
 
     showTyping();
 
-    /* The delay stands in for the backend round trip. */
-    setTimeout(function () {
-      hideTyping();
-
-      const chit = smallTalkReply(question);
-      if (chit) {
-        addBotMessage(chit, null);
-      } else {
-        const match = resolveAnswer(question);
-        if (match) {
-          addBotMessage(match.answer, match.category);
-        } else {
-          addBotMessage(softDecline(), null);
+    fetch("/student/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: question }),
+      credentials: "include",
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        hideTyping();
+        addBotMessage(data.answer, data.category);
+        if (typeof announceVoice === "function") {
+          announceVoice(data.answer);
         }
-      }
+        busy = false;
+        input.focus();
+      })
+      .catch(function () {
+        /* If backend is not available, fall back to prototype matching */
+        setTimeout(function () {
+          hideTyping();
 
-      busy = false;
-      input.focus();
-    }, 900);
+          const chit = smallTalkReply(question);
+          if (chit) {
+            addBotMessage(chit, null);
+            if (typeof announceVoice === "function") announceVoice(chit);
+          } else {
+            const match = resolveAnswer(question);
+            if (match) {
+              addBotMessage(match.answer, match.category);
+              if (typeof announceVoice === "function") announceVoice(match.answer);
+            } else {
+              const decline = softDecline();
+              addBotMessage(decline, null);
+              if (typeof announceVoice === "function") announceVoice(decline);
+            }
+          }
+
+          busy = false;
+          input.focus();
+        }, 500);
+      });
   }
 
   /* ======================================================================

@@ -203,18 +203,34 @@ def _decline(text, category=None, confidence=0.0, similarity=0.0,
             "source": source}
 
 
-def active_question_ids():
-    rows = query("SELECT id FROM questions WHERE status = 'Active'")
-    return {r["id"] for r in rows}
+def active_question_ids(model=None):
+    try:
+        rows = query("SELECT id FROM questions WHERE status = 'Active'")
+        return {r["id"] for r in rows}
+    except Exception:
+        if model and "questions" in model:
+            return {q["id"] for q in model["questions"]}
+        return set()
 
 
-def answer_for(question_id):
-    return query(
-        """SELECT q.id, q.code, q.question, q.answer, c.name AS category
-           FROM questions q JOIN categories c ON c.id = q.category_id
-           WHERE q.id = %s""",
-        (question_id,),
-    )
+def answer_for(question_id, model=None):
+    try:
+        rows = query(
+            """SELECT q.id, q.code, q.question, q.answer, c.name AS category
+               FROM questions q JOIN categories c ON c.id = q.category_id
+               WHERE q.id = %s""",
+            (question_id,),
+        )
+        if rows:
+            return rows
+    except Exception:
+        pass
+
+    if model and "questions" in model:
+        for q in model["questions"]:
+            if q.get("id") == question_id and "answer" in q:
+                return [q]
+    return []
 
 
 def _best_match(similarities, model, allowed_ids, restrict_to=None):
@@ -335,7 +351,7 @@ def ask(text, user_id=None, log=True):
 
     # ---- cosine similarity: which stored question is closest? ----
     similarities = cosine_similarity(vector, model["phrase_matrix"])[0] * coverage
-    allowed = active_question_ids()
+    allowed = active_question_ids(model)
 
     source = "category"
     matched, score = (None, 0.0)
@@ -351,7 +367,7 @@ def ask(text, user_id=None, log=True):
     if matched is None or score < Config.MIN_SIMILARITY:
         result = _decline(text, category, confidence, float(score), "fallback")
     else:
-        rows = answer_for(matched["id"])
+        rows = answer_for(matched["id"], model)
         if not rows:
             result = _decline(text, category, confidence, float(score),
                               "missing_row")

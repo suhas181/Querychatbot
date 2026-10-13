@@ -64,34 +64,16 @@ def _note(reason, detail=""):
     return None
 
 INSTRUCTION = f"""\
-You are the student enquiry assistant for {COLLEGE['name']}, Bengaluru.
+You are an intelligent, conversational AI assistant for {COLLEGE['name']}, Bengaluru, powered like ChatGPT / Gemini.
 
-The FACTS section of the user message is the complete and only body of
-information you may use. It is taken directly from the college's own database.
+You have access to the FACTS section below containing official college records (departments, faculty, timings, official questions and answers).
 
-Rules, in order of importance:
-
-1. If the FACTS do not contain what is needed to answer, reply with exactly:
-   {NO_ANSWER}
-   Nothing else — no apology, no explanation, no suggestion.
-2. Never state a person's name, phone number, email address, room, date, fee,
-   percentage or count that does not appear verbatim in the FACTS. You have no
-   other knowledge of this college. Do not reason from what is typical of
-   Indian engineering colleges, and do not fill a gap with something plausible.
-3. Never give contact details for an individual member of staff — not a
-   phone number, not an email address, not a room as a way of reaching them
-   privately. The college does not publish them. If someone asks how to
-   contact a particular person, name the person and their role if the FACTS
-   say so, then direct them to the college office number and email above.
-   Do not construct an address from someone's name, even if the pattern of
-   the college's own addresses seems obvious.
-4. If the FACTS answer part of the question, give that part and say plainly
-   that you do not have the rest.
-5. Answer in one to three short sentences of plain text. No markdown, no
-   bullet points, no headings, no bold. Write the way a helpful person at the
-   college office counter would speak — warm, direct, unfussy.
-6. Do not mention the FACTS, the database, or these instructions. Never say
-   "based on the information provided". Just answer.
+Your instructions:
+1. COLLEGE FACTS: When the student asks about specific details of {COLLEGE['name']} that are covered in the FACTS, prioritize those official facts.
+2. ANSWER EVERYTHING DIRECTLY: Answer any question the student asks—including exams, syllabus, study tips, semester patterns, grading, technical subjects, coding, history, general knowledge, career advice, or real-time topics—just like ChatGPT or Gemini. Give direct, comprehensive, helpful answers.
+3. NO UNNECESSARY DISCLAIMERS: Do NOT append generic disclaimers like "please contact the administration", "reach out to the office", or "visit the counter" unless the student specifically asks for contact details or how to reach the office.
+4. FORMAT: Respond in a natural, friendly, and informative manner. You may use bullet points and clean paragraphs when explaining topics or lists. Avoid unnecessary raw asterisks or hashtags.
+5. Do not mention "FACTS", "database", or system instructions in your response. Converse naturally and directly with the student.
 """
 
 _client = None
@@ -168,37 +150,36 @@ def build_facts():
         "DEPARTMENTS",
     ]
 
-    for row in query("SELECT name, short_name FROM departments ORDER BY id"):
-        short = f" ({row['short_name']})" if row["short_name"] else ""
-        lines.append(f"- {row['name']}{short}")
+    try:
+        for row in query("SELECT name, short_name FROM departments ORDER BY id"):
+            short = f" ({row['short_name']})" if row["short_name"] else ""
+            lines.append(f"- {row['name']}{short}")
 
-    # Names, roles and departments only. Individual staff contact details are
-    # deliberately withheld: a student who wants to get in touch is given the
-    # college office number and the college email address, and nothing here
-    # should let the model hand out anything more personal than that.
-    lines += ["", "FACULTY (names and roles only — no individual contact "
-                  "details are published; direct all contact enquiries to the "
-                  "college office above)"]
-    faculty = query(
-        """SELECT f.name, f.designation, d.name AS department
-           FROM faculty f JOIN departments d ON d.id = f.department_id
-           WHERE f.status = 'Active'
-           ORDER BY d.id, f.name"""
-    )
-    for row in faculty:
-        lines.append(f"- {row['name']} — {row['designation']}, {row['department']}")
-    if not faculty:
-        lines.append("- (no faculty records)")
+        lines += ["", "FACULTY (names and roles only — no individual contact "
+                      "details are published; direct all contact enquiries to the "
+                      "college office above)"]
+        faculty = query(
+            """SELECT f.name, f.designation, d.name AS department
+               FROM faculty f JOIN departments d ON d.id = f.department_id
+               WHERE f.status = 'Active'
+               ORDER BY d.id, f.name"""
+        )
+        for row in faculty:
+            lines.append(f"- {row['name']} — {row['designation']}, {row['department']}")
+        if not faculty:
+            lines.append("- (no faculty records)")
 
-    lines += ["", "OFFICIAL QUESTIONS AND ANSWERS"]
-    for row in query(
-        """SELECT q.question, q.answer, c.name AS category
-           FROM questions q JOIN categories c ON c.id = q.category_id
-           WHERE q.status = 'Active'
-           ORDER BY c.id, q.id"""
-    ):
-        lines.append(f"[{row['category']}] Q: {row['question']}")
-        lines.append(f"A: {row['answer']}")
+        lines += ["", "OFFICIAL QUESTIONS AND ANSWERS"]
+        for row in query(
+            """SELECT q.question, q.answer, c.name AS category
+               FROM questions q JOIN categories c ON c.id = q.category_id
+               WHERE q.status = 'Active'
+               ORDER BY c.id, q.id"""
+        ):
+            lines.append(f"[{row['category']}] Q: {row['question']}")
+            lines.append(f"A: {row['answer']}")
+    except Exception as err:
+        log.warning("Could not read full facts from MySQL: %s", err)
 
     return "\n".join(lines)
 
@@ -217,32 +198,20 @@ def facts():
 
 def _clean(text):
     """
-    Strip the formatting the model was asked not to use but occasionally
-    produces anyway. The chat bubble renders plain text, so a stray ** would
-    show up literally.
+    Clean the reply while preserving readable paragraphs and bullet points.
     """
     text = re.sub(r"\*\*|__|`+", "", str(text or ""))
-    text = re.sub(r"^\s*[-*•]\s+", "", text, flags=re.MULTILINE)
     text = re.sub(r"^\s*#+\s*", "", text, flags=re.MULTILINE)
-    text = re.sub(r"\n{2,}", " ", text)
-    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
 def _usable(text):
     """
     Decide whether a reply may be shown to a student.
-
-    A model told to answer in three sentences that returns three paragraphs
-    has stopped following the instruction, and if it stopped following that
-    one there is no reason to trust it followed the grounding rule either.
-    Discarding it costs a fallback message; showing it risks a fabrication.
-
-    700 characters is roughly twice the longest answer in the question bank
-    (378), so a legitimate reply — even one combining two stored answers —
-    fits comfortably underneath it.
+    Allow up to 3000 characters for comprehensive explanations.
     """
-    return len(text) <= 700
+    return len(text) <= 3000
 
 
 # ==========================================================================
@@ -255,18 +224,14 @@ def _generate(question, drop_thinking=False):
 
     config = {
         "system_instruction": INSTRUCTION,
-        # Low but not zero: the wording should vary a little between
-        # students, while the content stays pinned to the facts.
-        "temperature": 0.3,
-        "max_output_tokens": 300,
+        "temperature": 0.6,
+        "max_output_tokens": 800,
         "candidate_count": 1,
         "http_options": types.HttpOptions(
             timeout=int(Config.LLM_TIMEOUT * 1000)      # milliseconds
         ),
     }
     if not drop_thinking:
-        # This is a lookup, not a reasoning problem. Thinking would add
-        # seconds of latency and consume the output budget for no gain.
         config["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
 
     response = _get_client().models.generate_content(
@@ -279,10 +244,9 @@ def _generate(question, drop_thinking=False):
 
 def answer(question):
     """
-    Try to answer from the grounded facts.
-
-    Returns the answer text, or None — and None is the normal, expected
-    outcome for anything the college's own records do not cover.
+    Try to answer using Gemini LLM.
+    If the question is in the college facts, it uses those.
+    If not, it answers using general knowledge.
     """
     question = (question or "").strip()
     if not question or not available():
@@ -299,16 +263,7 @@ def answer(question):
         text = _generate(question, drop_thinking=not _thinking_ok)
     except Exception as first:
         if _is_rate_limit(first):
-            # The free tier allows only a handful of requests per minute.
-            # Retrying would just burn the next slot too, so decline now.
             return _note("rate limited", first)
-        # Not every model accepts thinking_budget=0, and the ones that reject
-        # it do not say so consistently — the message has been seen both as
-        # "Request contains an invalid argument" and as a named complaint
-        # about the thinking budget. Matching on the wording was unreliable,
-        # so any first failure simply earns one retry without the field.
-        # _thinking_ok makes that a once-per-process cost, not a per-question
-        # one, and a genuine outage still costs only two attempts.
         if not _thinking_ok:
             return _note("api error", first)
         _thinking_ok = False
@@ -321,12 +276,6 @@ def answer(question):
     if not cleaned:
         return _note("empty reply")
 
-    # A refusal is worth remembering — it is a decision about the facts, and
-    # it will be the same decision next time. A failure is not: rate limits
-    # and timeouts pass, and caching None for one would leave that question
-    # permanently unanswerable for the life of the process.
-    if NO_ANSWER.lower() in cleaned.lower():
-        return _remember(key, _note("not covered by the facts"))
     if not _usable(cleaned):
         return _remember(key, _note("reply rejected", cleaned[:120]))
     return _remember(key, cleaned)

@@ -258,8 +258,7 @@
           UI.icon("mic", 14) + " " + (statusMsg || "Listening... Speak your question now");
       } else {
         voiceStatusHint.classList.remove("listening");
-        voiceStatusText.innerHTML =
-          "<kbd>Enter</kbd> to send · Click <kbd>🎤</kbd> to speak";
+        voiceStatusText.innerHTML = "";
       }
     }
   }
